@@ -94,13 +94,13 @@ Searches the listings file for items matching a text description, an optional si
      The grader checks your code against what you claim here, so the file and
      function have to be real. -->
 
-**Branch rule:**
+**Branch rule:** If `search_listings` returns an empty list, the loop sets `session["error"]` to a message naming what the user could change (raise the price ceiling, drop the size, or try fewer or different description words), leaves `session["fit_card"]` as None, and returns the session without calling `suggest_outfit` or `create_fit_card`. Otherwise it stores the results in `session["search_results"]`, sets `session["selected_item"]` to the first result (the best match, since results are ranked), calls `suggest_outfit` with that item and the wardrobe, and then calls `create_fit_card` with the outfit and the same item.
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** With regular expressions and plain string handling, not the model. One pattern pulls a price ceiling out of phrases like "under $30" or "below 30", and another pulls a size out of phrases like "size M". The text that is left becomes the description. If no price or size is found, that value is None and the filter is skipped. This is predictable, but it will miss unusual phrasings such as "less than thirty dollars". The result goes in `session["parsed"]`.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** The loop writes to the session after each tool call and reads from it before the next one, in this order: `parsed` (description, size, max_price), `search_results`, `selected_item`, `outfit_suggestion`, `fit_card`. Each tool gets its input from the session, never straight from the previous call's return value, so `selected_item` can be checked against what reached `suggest_outfit`. In the empty-search path the run ends with `search_results` empty, `error` set, and `fit_card` still None.
 
 ---
 
