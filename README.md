@@ -38,6 +38,7 @@
 <!-- ═══════════════════════ UNIT 3 — THE BUILD ═══════════════════════ -->
 
 ## What This Does
+Searches the listings file for items matching a text description, an optional size, and an optional price ceiling, and returns the matches ranked best first.
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
@@ -59,24 +60,24 @@
 
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Searches the listings file for items matching a text description, an optional size, and an optional price ceiling, and returns the matches ranked best first.
+- **Inputs:** `description` (str), `size` (str | None), `max_price` (float | None). If `size` or `max_price` is None, that filter is skipped.
+- **Returns:** A list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), sorted by number of matching description words (most first), then by price (lowest first).
+- **When it has nothing:** An empty list `[]`, never None and never an exception.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Takes one listing and the user's wardrobe, and asks the model for a short written suggestion of how to wear the new item with pieces the user already owns.
+- **Inputs:** `new_item` (dict, one full listing dict as returned by `search_listings`), `wardrobe` (dict with an `items` key holding a list of wardrobe item dicts, each with id, name, category, colors, style_tags, and notes, which may be null).
+- **Returns:** A string of outfit advice, one to three outfit ideas in plain prose, each naming specific wardrobe pieces by their `name`.
+- **When it has nothing:** If `wardrobe["items"]` is empty, it returns a string of general styling advice for the item that names no wardrobe pieces. It never returns None or an empty string, and never raises.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Takes the outfit advice and the new item and asks the model to write a short social-media-style caption for the look, something a person would actually post.
+- **Inputs:** `outfit` (str, the outfit advice string returned by `suggest_outfit`), `new_item` (dict, one full listing dict as returned by `search_listings`).
+- **Returns:** A string containing one caption of one to three sentences that mentions the item and its price, optionally with a few hashtags. The wording can differ between runs.
+- **When it has nothing:** If `outfit` is empty or the model call fails, it returns a plain fallback caption built from the listing's title and price, with no model involved. It never returns None or an empty string, and never raises.
 
 ---
 
