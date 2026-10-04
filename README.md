@@ -38,11 +38,7 @@
 <!-- ═══════════════════════ UNIT 3 — THE BUILD ═══════════════════════ -->
 
 ## What This Does
-Searches the listings file for items matching a text description, an optional size, and an optional price ceiling, and returns the matches ranked best first.
-
-<!-- Three or four sentences: what a user asks for, and what they get back. -->
-
-
+FitFindr is a thrifting agent. A user types what they want in plain language, such as "vintage graphic tee under $30, size M", and the agent searches a file of 40 secondhand listings, picks the best match, suggests outfits that combine it with pieces from the user's own wardrobe, and writes a short caption the user could post about the find. If nothing matches, the agent stops early and tells the user what to change instead of running the later steps on nothing.
 
 ---
 
@@ -107,10 +103,24 @@ Matching rules: the description is lowercased and split into words. Price amount
 
 ## Sample Run
 
-<!-- Two things go here.
+$ python app.py ask 'vintage graphic tee under $30, size M'
+[1] search_listings
+      in:  description='vintage graphic tee', size='M', max_price=30.0
+      out: 8 items: Y2K Baby Tee — Butterfly Print, Mesh Long-Sleeve Top — Black, Henley Long Sleeve — Washed Burgundy … +5 more
+[2] suggest_outfit
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: For a quintessential Y2K-inspired streetwear look, you can pair the Y2K Baby Tee — Butterfly Print with the Ba…
+[3] create_fit_card
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: scored this cute little butterfly tee on depop for just $18 and I am obsessed with the early 2000s mall-rat en…
 
-     1. One FULL query and its output, pasted as text.
-     2. Your three per-tool terminal tests — the command and what it printed. -->
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   For a quintessential Y2K-inspired streetwear look, you can pair the Y2K Baby Tee — Butterfly Print with the Baggy straight-leg jeans, dark wash, layered underneath the Black cropped zip hoodie for a balanced proportion of fitted and relaxed silhouettes. Complete this outfit by stepping into the Chunky white sneakers and wearing the Black crossbody bag for an effortless everyday finish.
+
+Alternatively, for a more contrasting style that blends the tee's delicate butterfly graphic with a grungier aesthetic, tuck the Y2K Baby Tee — Butterfly Print into the Wide-leg khaki trousers. Layer the Vintage black denim jacket on top and anchor the entire look with the Black combat boots, adding the Black crossbody bag to tie the accessories together.
+
+  Fit card: scored this cute little butterfly tee on depop for just $18 and I am obsessed with the early 2000s mall-rat energy. styling it with baggy dark wash denim and chunky white sneakers for the ultimate nostalgic off-duty look. #y2kstyle
 
 **One full query**
 
