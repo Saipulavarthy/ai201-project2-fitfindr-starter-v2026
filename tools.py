@@ -20,9 +20,28 @@ That last line is what your loop branches on. "Returns a list" earns nothing —
 the description has to say what is *in* the list.
 """
 
+import re
+
 import config  # noqa: F401 — you'll use this in search_listings
-from generate import generate
+from generate import ModelUnavailable, QuotaGuard, generate
 from utils.data_loader import load_listings
+
+# Filler words that say nothing about the item itself.
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "of", "for", "in", "on", "with", "to",
+    "under", "over", "below", "above", "size", "sized", "my", "me", "i",
+    "some", "something", "looking", "want", "need", "find",
+}
+
+
+def _words(text: str) -> set[str]:
+    """Lowercase word tokens; hyphenated tags like 'tie-dye' stay whole."""
+    return set(re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)*", text.lower()))
+
+
+def _size_parts(size: str) -> set[str]:
+    """'S/M' -> {'s', 'm'}; 'XL (oversized)' -> {'xl', 'oversized'}."""
+    return {p for p in re.split(r"[\s/()]+", size.lower()) if p}
 
 
 # ── Tool 1: search_listings ───────────────────────────────────────────────────
@@ -78,8 +97,36 @@ def search_listings(
     Test it from a terminal before you move on:
         python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
     """
-    # TODO: replace this with your implementation
-    return []
+    # Prices like "$30" are a filter, not a keyword.
+    text = re.sub(r"\$\s*\d+(?:\.\d+)?", " ", description or "")
+    keywords = {w for w in _words(text) if w not in _STOPWORDS and len(w) > 1}
+    if not keywords:
+        return []
+
+    wanted_size = size.strip().lower() if size else None
+
+    scored = []
+    for listing in load_listings():
+        if max_price is not None and listing["price"] > max_price:
+            continue
+        listing_size = (listing["size"] or "").lower()
+        if wanted_size and not (
+            wanted_size == listing_size or wanted_size in _size_parts(listing_size)
+        ):
+            continue
+
+        haystack = _words(" ".join([
+            listing["title"] or "",
+            listing["description"] or "",
+            listing["category"] or "",
+            " ".join(listing["style_tags"] or []),
+        ]))
+        score = len(keywords & haystack)
+        if score > 0:
+            scored.append((score, listing))
+
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["price"]))
+    return [listing for _, listing in scored[: config.SEARCH_RESULT_LIMIT]]
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -112,8 +159,51 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
     Test it from a terminal before you move on:
         python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
     """
-    # TODO: replace this with your implementation
-    return ""
+    title = new_item.get("title") or "this item"
+    item_text = (
+        f"Title: {title}\n"
+        f"Category: {new_item.get('category')}\n"
+        f"Colors: {', '.join(new_item.get('colors') or [])}\n"
+        f"Style tags: {', '.join(new_item.get('style_tags') or [])}"
+    )
+    items = (wardrobe or {}).get("items") or []
+
+    if not items:
+        prompt = (
+            f"Someone is considering this thrifted item:\n{item_text}\n\n"
+            "They haven't told us what's in their wardrobe. Give general "
+            "styling advice for this item: one or two outfit ideas described "
+            "by type of piece (e.g. 'straight-leg jeans'), in plain prose. "
+            "Do not claim they own anything. No bullet points or headings."
+        )
+    else:
+        lines = []
+        for piece in items:
+            line = (
+                f'- "{piece["name"]}" ({piece["category"]}; '
+                f"colors: {', '.join(piece.get('colors') or [])}; "
+                f"style: {', '.join(piece.get('style_tags') or [])})"
+            )
+            if piece.get("notes"):
+                line += f" Notes: {piece['notes']}"
+            lines.append(line)
+        prompt = (
+            f"Someone is considering this thrifted item:\n{item_text}\n\n"
+            f"Their wardrobe:\n" + "\n".join(lines) + "\n\n"
+            "Suggest one or two outfits that pair the new item with pieces "
+            "from this wardrobe. Name each wardrobe piece by its exact name "
+            "as written in quotes above. Only use pieces from the list. "
+            "Write in plain prose, no bullet points or headings."
+        )
+
+    fallback = f"Outfit ideas are unavailable right now for {title}."
+    try:
+        response = generate(prompt)
+    except (ModelUnavailable, QuotaGuard):
+        raise  # the agent loop reports these to the user
+    except Exception:  # noqa: BLE001 — rate limits, anything else
+        return fallback
+    return response.strip() or fallback
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -152,5 +242,28 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     Test it from a terminal before you move on:
         python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
     """
-    # TODO: replace this with your implementation
-    return ""
+    title = new_item.get("title") or "a thrifted find"
+    price = new_item.get("price")
+    price_text = f"${price:.2f}" if isinstance(price, (int, float)) else "a thrift price"
+    platform = new_item.get("platform") or "a resale app"
+    fallback = f"[FALLBACK] Picked up {title} for {price_text} on {platform}."
+
+    if not outfit or not outfit.strip():
+        return fallback
+
+    prompt = (
+        f"Item: {title}\nPrice: {price_text}\nPlatform: {platform}\n"
+        f"How it's being styled:\n{outfit.strip()}\n\n"
+        "Write a caption someone would actually post about this thrift find. "
+        "Two to three sentences. Mention the item, its price, and the "
+        "platform once each. Be specific about the vibe of the outfit. "
+        "Sound like a real person, not a product description. At most one "
+        "or two hashtags, or none. Return only the caption."
+    )
+    try:
+        response = generate(prompt)
+    except (ModelUnavailable, QuotaGuard):
+        raise  # the agent loop reports these to the user
+    except Exception:  # noqa: BLE001 — rate limits, anything else
+        return fallback
+    return response.strip() or fallback

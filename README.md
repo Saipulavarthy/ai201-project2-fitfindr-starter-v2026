@@ -62,22 +62,26 @@ Searches the listings file for items matching a text description, an optional si
 
 - **What it does:** Searches the listings file for items matching a text description, an optional size, and an optional price ceiling, and returns the matches ranked best first.
 - **Inputs:** `description` (str), `size` (str | None), `max_price` (float | None). If `size` or `max_price` is None, that filter is skipped.
-- **Returns:** A list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), sorted by number of matching description words (most first), then by price (lowest first).
+- **Returns:** A list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), at most `config.SEARCH_RESULT_LIMIT` of them, sorted by number of matching description words (most first) and then by price (lowest first). Listings that match no description words are dropped.
 - **When it has nothing:** An empty list `[]`, never None and never an exception.
+
+**Matching rules.** The description is lowercased and split into words. Price amounts like `$30`, single-letter words, and filler words such as "a", "the", "under", "size", "looking" and "want" are ignored. A listing scores one point for each distinct description word that appears as a whole word in its title, description, style_tags, or category. Brand is not searched. Because matching is whole-word only, plurals miss (`sneaker` will not match `sneakers`). Size is compared case-insensitively and matches if the requested size equals the whole listing size or equals one piece of it when split on spaces, "/", and parentheses, so "M" matches "M" and "S/M" but not "L", "XL (oversized)", or "US 9". Price passes when it is less than or equal to `max_price`. Ties on score are broken by lower price, so the first result is not always the most literal match.
+
 
 ### `suggest_outfit`
 
-- **What it does:** Takes one listing and the user's wardrobe, and asks the model for a short written suggestion of how to wear the new item with pieces the user already owns.
+- **What it does:** Takes one listing and the user's wardrobe and asks the model for one or two outfit ideas that combine the new item with pieces the user already owns.
 - **Inputs:** `new_item` (dict, one full listing dict as returned by `search_listings`), `wardrobe` (dict with an `items` key holding a list of wardrobe item dicts, each with id, name, category, colors, style_tags, and notes, which may be null).
-- **Returns:** A string of outfit advice, one to three outfit ideas in plain prose, each naming specific wardrobe pieces by their `name`.
-- **When it has nothing:** If `wardrobe["items"]` is empty, it returns a string of general styling advice for the item that names no wardrobe pieces. It never returns None or an empty string, and never raises.
+- **Returns:** A non-empty string of outfit advice in plain prose, naming specific wardrobe pieces.
+- **When it has nothing:** If `wardrobe["items"]` is empty, it returns general styling advice for the item that names no wardrobe pieces. If the model call fails or returns an empty response, it returns the fallback string "Outfit ideas are unavailable right now for <title>." It never returns None or "" and never raises, except that `ModelUnavailable` and `QuotaGuard` are allowed through for the loop to handle.
+
 
 ### `create_fit_card`
 
-- **What it does:** Takes the outfit advice and the new item and asks the model to write a short social-media-style caption for the look, something a person would actually post.
-- **Inputs:** `outfit` (str, the outfit advice string returned by `suggest_outfit`), `new_item` (dict, one full listing dict as returned by `search_listings`).
-- **Returns:** A string containing one caption of one to three sentences that mentions the item and its price, optionally with a few hashtags. The wording can differ between runs.
-- **When it has nothing:** If `outfit` is empty or the model call fails, it returns a plain fallback caption built from the listing's title and price, with no model involved. It never returns None or an empty string, and never raises.
+- **What it does:** Takes the outfit advice and the new item and asks the model to write a short caption someone would actually post about the find.
+- **Inputs:** `outfit` (str, the string returned by `suggest_outfit`), `new_item` (dict, one full listing dict as returned by `search_listings`).
+- **Returns:** A string of two to three sentences that mentions the item, its price, and its platform once each, optionally with a hashtag. The wording differs between runs.
+- **When it has nothing:** If `outfit` is empty or whitespace, or the model call fails, it returns a plain fallback caption that begins with exactly "[FALLBACK]" followed by a sentence built from the title, price, and platform. It never returns None or "" and never raises, except that `ModelUnavailable` and `QuotaGuard` are allowed through for the loop to handle.
 
 ---
 
@@ -122,17 +126,32 @@ $ python app.py ask '...'
 
 ```
 $ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
+[{'id': 'lst_017', 'title': 'Mesh Long-Sleeve Top — Black', 'description': 'Sheer black mesh long-sleeve. Great for layering under a graphic tee or over a bralette. Stretchy material, fits true to size.', 'category': 'tops', 'style_tags': ['y2k', 'grunge', 'goth', 'layering'], 'size': 'S/M', 'condition': 'excellent', 'price': 15.0, 'colors': ['black'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_002', 'title': 'Y2K Baby Tee — Butterfly Print', 'description': 'Super cute early 2000s baby tee with butterfly graphic. Fitted crop length. Tag says medium but fits like a small.', 'category': 'tops', 'style_tags': ['y2k', 'vintage', 'graphic tee', 'cottagecore'], 'size': 'S/M', 'condition': 'excellent', 'price': 18.0, 'colors': ['white', 'pink', 'purple'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_033', 'title': 'Vintage Band Tee — Faded Grey', 'description': 'Faded grey band-style tee with distressed graphic. Crew neck. Fits boxy. Well-loved but no holes or major damage.', 'category': 'tops', 'style_tags': ['vintage', 'grunge', 'band tee', 'graphic tee', 'streetwear'], 'size': 'L', 'condition': 'fair', 'price': 19.0, 'colors': ['grey', 'charcoal'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_006', 'title': 'Graphic Tee — 2003 Tour Bootleg Style', 'description': 'Vintage-style bootleg tee with faded graphic. Slightly boxy fit. 100% cotton, soft and worn-in.', 'category': 'tops', 'style_tags': ['graphic tee', 'vintage', 'grunge', 'streetwear', 'band tee'], 'size': 'L', 'condition': 'good', 'price': 24.0, 'colors': ['black'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_015', 'title': 'Vintage Graphic Hoodie — Faded Black', 'description': 'Faded black pullover hoodie with barely-visible vintage graphic on the chest. Cozy interior. Some pilling but adds to the worn-in look.', 'category': 'tops', 'style_tags': ['vintage', 'grunge', 'graphic', 'streetwear'], 'size': 'L', 'condition': 'fair', 'price': 26.0, 'colors': ['black', 'charcoal'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_011', 'title': 'Low-Rise Cargo Pants — Khaki', 'description': 'Y2K era low-rise cargo pants. Lots of pockets. Khaki color, slightly distressed at the hems. Great for layering with a long tee.', 'category': 'bottoms', 'style_tags': ['y2k', 'cargo', '2000s', 'streetwear'], 'size': 'W29', 'condition': 'fair', 'price': 27.0, 'colors': ['khaki', 'tan'], 'brand': None, 'platform': 'poshmark'}]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+For an effortless, casual streetwear look, pair the vintage Levi's 501 jeans with the white ribbed tank top tucked in at the waist, cinched with the brown leather belt, and finished off with the chunky white sneakers. To complete the outfit on a cooler day, layer the oversized grey crewneck sweatshirt on top and carry the black crossbody bag.
 
+Another great option leans into a more classic, grunge-inspired aesthetic by combining the vintage Levi's 501 jeans with the black cropped zip hoodie and the black combat boots. You can add the vintage black denim jacket as an outer layer for a cohesive double-denim look and accessorize with the black crossbody bag for a sharp, monochrome finish.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Literally obsessed with these vintage Levi's 501 jeans I just scored on depop for only $38.00. They have that slouchy, effortlessly cool 90s fit when you pair them with fresh white sneakers. Total thrift gold. #depopfinds
+```
 
+**Edge cases**
+
+```
+$ python -c "from tools import search_listings; print(search_listings('designer ballgown', size='XXS', max_price=5))"
+[]
+
+$ python -c "from tools import search_listings; print([(l['title'], l['size']) for l in search_listings('tee', size='M')])"
+[('Mesh Long-Sleeve Top — Black', 'S/M'), ('Y2K Baby Tee — Butterfly Print', 'S/M')]
+
+$ python -c "from tools import suggest_outfit; from utils.data_loader import load_listings; print(suggest_outfit(load_listings()[0], {'items': []}))"
+A classic pair of vintage medium-wash Levi's 501 jeans can serve as the anchor for a casual, streetwear-inspired daytime look by pairing them with an oversized graphic t-shirt and a classic canvas sneaker. Alternatively, for a slightly sharper aesthetic, the jeans can be styled with a tucked-in ribbed tank top layered beneath an open button-down shirt, finished off with leather loafers or retro runners.
 ```
 
 ---

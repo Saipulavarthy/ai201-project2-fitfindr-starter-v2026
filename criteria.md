@@ -25,9 +25,6 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
 Search is a plain keyword match on individual words, and the query parser is built from regular expressions, so some phrasings will be parsed wrongly or will miss a listing that a person would consider a match. Two of the three steps also call a model, which can fail or return something unusable on a given run. Four of 5 leaves room for those misses without being so loose that a broken happy path would pass.
 ---
 
@@ -37,8 +34,6 @@ Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
 **Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
 This path involves no model. It depends only on search returning an empty list and the loop checking for it, and both are deterministic code I control. If the branch works once it should work every time, so anything below 5 of 5 would mean the branch is broken, not that the path is unlucky.
 
 
@@ -49,16 +44,6 @@ This path involves no model. It depends only on search returning an empty list a
 Given a query that matches at least one listing, the item dictionary logged by `trace.step` for `suggest_outfit` and for `create_fit_card` equals `session["selected_item"]`, in 5 of 5 tries.
 
 
-<!-- YOU WRITE THIS ONE.
-
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
-
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
-
 **Why this target:**
 Comparing the full dictionary, not just the ID, catches an item that arrives with fields altered or dropped. The check covers the hand-off from the loop to each tool, and because the loop reads the item from the session for both calls and involves no model, it should hold every time, so 5 of 5 is fair.
 
@@ -67,18 +52,7 @@ Comparing the full dictionary, not just the ID, catches an item that arrives wit
 
 ## 4. Something about the fit card
 
-Given a matching query, the fit card is 3 sentences or fewer, contains at least one word of four letters or more from the item's title, and does not begin with the fixed fallback marker "[FALLBACK]", in 5 of 5 tries.
-
-<!-- YOU WRITE THIS ONE.
-
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
+Given a matching query, the fit card is 3 sentences or fewer (hashtags do not count as sentences), contains at least one word of four letters or more from the item's title, and does not begin with the fixed fallback marker "[FALLBACK]", in 5 of 5 tries.
 
 **Why this target:**
 The fit card should be short enough to post and clearly about the right item. Starting the fallback caption with a fixed marker a model would never write lets me tell a real model caption from the hardcoded fallback. I picked 5 of 5 because these are loose checks that a reasonable caption passes however the model words it, so a miss would point to a real problem in my prompt or fallback handling and not to ordinary variation.
@@ -90,13 +64,6 @@ The fit card should be short enough to post and clearly about the right item. St
 ## 5. Your choice
 
 Given the query "vintage graphic tee under $30, size M", the agent sets `session["parsed"]` to a `max_price` of 30 and a size of "M", in 5 of 5 tries.
-
-<!-- YOU WRITE THIS ONE TOO.
-
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
 
 **Why this target:**
 Parsing uses regular expressions, so extraction should be reliable on a plain multi-constraint query before the values reach `search_listings`.
