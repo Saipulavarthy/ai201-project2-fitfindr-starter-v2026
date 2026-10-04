@@ -65,8 +65,7 @@ Searches the listings file for items matching a text description, an optional si
 - **Returns:** A list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), at most `config.SEARCH_RESULT_LIMIT` of them, sorted by number of matching description words (most first) and then by price (lowest first). Listings that match no description words are dropped.
 - **When it has nothing:** An empty list `[]`, never None and never an exception.
 
-**Matching rules.** The description is lowercased and split into words. Price amounts like `$30`, single-letter words, and filler words such as "a", "the", "under", "size", "looking" and "want" are ignored. A listing scores one point for each distinct description word that appears as a whole word in its title, description, style_tags, or category. Brand is not searched. Because matching is whole-word only, plurals miss (`sneaker` will not match `sneakers`). Size is compared case-insensitively and matches if the requested size equals the whole listing size or equals one piece of it when split on spaces, "/", and parentheses, so "M" matches "M" and "S/M" but not "L", "XL (oversized)", or "US 9". Price passes when it is less than or equal to `max_price`. Ties on score are broken by lower price, so the first result is not always the most literal match.
-
+Matching rules: the description is lowercased and split into words. Price amounts like `$30`, single-letter words, and filler words such as "a", "the", "under", "size", "looking" and "want" are ignored. A listing scores one point for each distinct description word that appears as a whole word in its title, description, style_tags, or category. Brand is not searched. Because matching is whole-word only, plurals miss (`sneaker` will not match `sneakers`). Size is compared case-insensitively and matches if the requested size equals the whole listing size or equals one piece of it when split on spaces, "/", and parentheses, so "M" matches "M" and "S/M" but not "L", "XL (oversized)", or "US 9". Price passes when it is less than or equal to `max_price`. Ties on score are broken by lower price, so the first result is not always the most literal match.
 
 ### `suggest_outfit`
 
@@ -75,14 +74,12 @@ Searches the listings file for items matching a text description, an optional si
 - **Returns:** A non-empty string of outfit advice in plain prose, naming specific wardrobe pieces.
 - **When it has nothing:** If `wardrobe["items"]` is empty, it returns general styling advice for the item that names no wardrobe pieces. If the model call fails or returns an empty response, it returns the fallback string "Outfit ideas are unavailable right now for <title>." It never returns None or "" and never raises, except that `ModelUnavailable` and `QuotaGuard` are allowed through for the loop to handle.
 
-
 ### `create_fit_card`
 
 - **What it does:** Takes the outfit advice and the new item and asks the model to write a short caption someone would actually post about the find.
 - **Inputs:** `outfit` (str, the string returned by `suggest_outfit`), `new_item` (dict, one full listing dict as returned by `search_listings`).
 - **Returns:** A string of two to three sentences that mentions the item, its price, and its platform once each, optionally with a hashtag. The wording differs between runs.
 - **When it has nothing:** If `outfit` is empty or whitespace, or the model call fails, it returns a plain fallback caption that begins with exactly "[FALLBACK]" followed by a sentence built from the title, price, and platform. It never returns None or "" and never raises, except that `ModelUnavailable` and `QuotaGuard` are allowed through for the loop to handle.
-
 ---
 
 ## Planning Loop
@@ -167,15 +164,15 @@ A classic pair of vintage medium-wash Levi's 501 jeans can serve as the anchor f
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I gave my VS Code assistant my Tool Inventory spec and asked it to implement `search_listings`, `suggest_outfit`, and `create_fit_card` in `tools.py`, with exact-piece size matching, an empty list on no match, and a `[FALLBACK]` caption when the model fails.
+- *What came back:* Working tools, plus a report of conflicts. My spec said the tools "never raise," but `generate.py` and `agent.py` expect the loop to handle `ModelUnavailable`, so the two model tools let it through. It also caught `QuotaGuard` and turned it into a fallback, and its size rule could never match a value like "One Size".
+- *What I changed:* I kept `ModelUnavailable` passing through and rewrote my spec to say "never raises, except `ModelUnavailable` and `QuotaGuard`." I made `QuotaGuard` propagate too, because a fallback caption would hide a runaway loop. I added a rule that a size also matches when the requested size equals the whole listing size.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked an AI to draft my branch rule and Planning Loop section before I had seen `agent.py`.
+- *What came back:* A reasonable rule, but with session keys it had guessed: `outfit` and a separate message field.
+- *What I changed:* After reading `agent.py` I corrected the keys to `outfit_suggestion` and `session["error"]`, which are what the starter's session dictionary uses. I also made the empty-search message name the parsed query values, so the user can see what was searched.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
