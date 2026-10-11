@@ -184,6 +184,26 @@ A classic pair of vintage medium-wash Levi's 501 jeans can serve as the anchor f
 - *What came back:* A reasonable rule, but with session keys it had guessed: `outfit` and a separate message field.
 - *What I changed:* After reading `agent.py` I corrected the keys to `outfit_suggestion` and `session["error"]`, which are what the starter's session dictionary uses. I also made the empty-search message name the parsed query values, so the user can see what was searched.
 
+### Unit 4
+
+**Moment 3**
+
+- *What I asked for:* I asked my VS Code assistant to move search_listings behind MCP and compare the direct and MCP results before changing the agent, reporting differences without fixing them.
+- *What came back:* It registered the tool, found no differences in values, order or field types across three queries, and noticed that my default python couldn't import mcp because the SDK is only in .venv.
+- *What I changed:* Nothing in the code. I did notice that its trace still printed "search_listings" whether or not the call went over MCP, so I had it relabel step 1 to show "via MCP".
+
+**Moment 4**
+
+- *What I asked for:* I asked the assistant to build my scenarios and say which criteria the run_eval scorer could and couldn't check.
+- *What came back:* One scenario per criterion, plus a finding that criterion 3 couldn't be measured as I wrote it. Its first PASS table, though, had invented a stricter reading of criterion 4 and a looser one of criterion 3 without quoting my criteria.
+- *What I changed:* I made it print my criteria word for word next to each PASS check, then decided myself that case would be ignored for title words, and wrote criterion 3's revision under the original instead of editing it.
+
+**Moment 5**
+
+- *What I asked for:* I asked the assistant to rank near matches better for 'oversized corduroy jacket'.
+- *What came back:* A check showed no corduroy jacket exists in the data and both jackets cost over $40, which made my first scenario unable to show any change, and one of my own earlier sentences about "loose word matching" gave the wrong reason.
+- *What I changed:* I dropped the price cap on the diagnostic scenario, reworded my diagnosis, and made the new rule a tie-breaker only (not extra score) so the top item for my other scenarios would not change; the assistant checked that without calling the model before I kept it.
+
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
      Don't fill these in during unit 3.
@@ -347,12 +367,12 @@ Note on scoring criterion 4: case was ignored when checking for title words (Lea
 
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
+<!-- On the MCP move: what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
 
-
+**The MCP move.** I moved search_listings behind MCP: mcp_server.py registers it, and agent.py::run_agent now calls it through mcp_client.call_tool instead of directly (the other two tools stay direct calls). Nothing behaved differently. Before the swap I compared the direct and MCP results for three queries; they were equal in order and field types, and the empty case came back as [] rather than None. The step 1 trace now reads "search_listings (via MCP)".
 
 ---
 
@@ -417,7 +437,15 @@ After (`results/run_2026-10-11_0034_after.md`):
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
 
+**Criterion 3 can't be measured as written.** The trace stores a string, not a dictionary, and logs the session's own object, so the full-dictionary comparison can't fail. I revised it in criteria.md to a weaker check (title, price and platform). Fixing it properly would mean logging a copy of what each tool actually receives and comparing that, which is a code change I held back to keep this unit to the MCP move and one improvement.
 
+**Near matches are still presented as finds.** For 'oversized corduroy jacket' the agent now picks the Denim Jacket, but it styles it and writes a fit card with no sign that no corduroy jacket exists. I'd add a check that compares the query's keywords to the selected item and says "closest match, not exact" in the final answer. I stopped at the ranking change because one improvement was the rule and the ranking was the smaller fix.
+
+**No criterion covers ranking, voice or caveats.** One after-run fit card (leather jacket, try 4) is written as if the poster were the seller ("Don't sleep on my shop!"), and criterion 4 can't catch that. Criterion 4 is also easy to pass because the query contains the item name, and criterion 1's 4-of-5 target may be low, though two 5/5 runs are a small sample.
+
+**Search matches only whole words.** "sneaker" doesn't match "sneakers" (already noted in my Tool Inventory). I haven't touched it because no scenario exercises it.
+
+**Small message tidy-ups.** The bad-key message shows the exception class name (ModelUnavailable:) and the session counter says "1 model calls". Neither changes what the user can do next, so I left them.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
