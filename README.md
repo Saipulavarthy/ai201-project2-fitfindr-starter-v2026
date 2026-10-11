@@ -202,19 +202,91 @@ A classic pair of vintage medium-wash Levi's 501 jeans can serve as the anchor f
      `python run_eval.py --label before` runs everything and writes the table
      into results/. Paste it here and fill in the verdicts. -->
 
+From `results/run_2026-10-10_2132_before.md`, run with `python run_eval.py --label before`, five tries per scenario, caching off, after the `search_listings` move to MCP.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Full three-tool run returns a fit card | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Empty search stops before suggest_outfit | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Item logged for both tools equals session["selected_item"] | 5 of 5 | PASS* | PASS* | PASS* | PASS* | PASS* | see Verdicts section |
+| 4. Fit card ≤3 sentences, has a title word, no [FALLBACK] | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Query parsed to max_price 30 and size "M" | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Real output from one try**, pasted as text, naming the file and function
-that produced it:
+* Criterion 3 was scored on title, price and platform only, because the trace stores a string, not a dictionary.
 
+**Real output from one try**, copied from `results/run_2026-10-10_2132_before.md`, try 1 of each scenario. The trace lines come from `trace.py::step`, called by `agent.py::run_agent`. The results file itself was written by `run_eval.py::write_report`.
+
+**Criterion 1**: scenario "matching query completes", query `vintage graphic tee under $30`. Trace from `agent.py::run_agent` (via `trace.py::step`); fit card from `tools.py::create_fit_card`.
+
+```text
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style … +7 more
+[2] suggest_outfit
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: For a casual, streetwear-inspired look, pair the Y2K baby tee with the baggy straight-leg jeans, dark wash, an…
+[3] create_fit_card
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: Found this adorable butterfly baby tee on Depop for just $18 and I'm obsessed. It gives off the ultimate effor…
 ```
 
+```text
+Found this adorable butterfly baby tee on Depop for just $18 and I'm obsessed. It gives off the ultimate effortless streetwear vibe when you style it with baggy dark wash denim and chunky sneaks. 🦋✨ #y2kstyle
+```
+
+**Criterion 2**: scenario "impossible query stops early", query `designer ballgown size XXS under $5`. Branch step from `agent.py::run_agent` (via `trace.py::step`); stopped-early message from `agent.py::_no_results_message`, as recorded by `run_eval.py::write_report`.
+
+```text
+[2] branch
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+      →    branch: empty results, stopping before suggest_outfit
+```
+
+```text
+- stopped early: yes — No listings matched (description "designer ballgown", size XXS, max price $5.00). Try to raise the price ceiling, or remove the size, or try different or fewer description words.
+```
+
+**Criterion 3**: scenario "selected item reaches both tools", query `denim jacket under $50`. `selected_item` line from `run_eval.py::write_report`; trace from `agent.py::run_agent` (via `trace.py::step`).
+
+```text
+- selected_item: Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+```
+
+```text
+[2] suggest_outfit
+      in:  Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+      out: For an effortless streetwear-inspired look, pair the denim jacket with the white ribbed tank top tucked into t…
+[3] create_fit_card
+      in:  Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+      out: Score the ultimate streetwear look with this light wash cropped denim jacket I just snagged on Poshmark for on…
+```
+
+**Criterion 4**: scenario "fit card short and on-item", query `leather jacket under $80`. Trace from `agent.py::run_agent` (via `trace.py::step`); fit card from `tools.py::create_fit_card`.
+
+```text
+[1] search_listings (via MCP)
+      in:  description='leather jacket', size=None, max_price=80.0
+      out: 7 items: 90s Leather Bomber — Black, Leather Belt — Brown, Braided, Shacket — Olive Canvas … +4 more
+[2] suggest_outfit
+      in:  90s Leather Bomber — Black ($75.0, depop)
+      out: For a classic grunge-inspired look, wear the thrifted 90s leather bomber over the white ribbed tank top paired…
+[3] create_fit_card
+      in:  90s Leather Bomber — Black ($75.0, depop)
+      out: Finally scored this ultimate 90s Leather Bomber on depop for just $75.00, and it gives off the absolute best e…
+```
+
+```text
+Finally scored this ultimate 90s Leather Bomber on depop for just $75.00, and it gives off the absolute best effortless grunge energy. I'm obsessed with throwing it over a basic tank and baggy denim for that slouchy, vintage-store-find aesthetic. #thriftfinds
+```
+
+Note on scoring criterion 4: case was ignored when checking for title words (Leather, Bomber, Black), and hashtags were not counted as sentences. The try 1 fit card contains "$75.00,", whose decimal point makes a plain split on `.`, `!` and `?` count 3 pieces, while reading it as prose counts 2 sentences. Both are within the limit of 3.
+
+**Criterion 5**: scenario "price and size parsed", query `vintage graphic tee under $30, size M`. Step 1 trace line from `agent.py::run_agent` (via `trace.py::step`), built from `session["parsed"]`.
+
+```text
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size='M', max_price=30.0
 ```
 
 ---
