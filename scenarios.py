@@ -60,6 +60,16 @@ SCENARIOS = [
         "wardrobe": "example",
         "criterion": 5,
     },
+    {
+        # Diagnostic. No corduroy jacket exists in the data, and both jackets
+        # cost over $40, so a $40 cap removes them before ranking. Without a
+        # cap they rank 8th and 9th behind seven listings that each match one
+        # word. PASS = the selected item's title contains the word 'Jacket'.
+        "name": "near-match ranking",
+        "query": "oversized corduroy jacket",
+        "wardrobe": "example",
+        "criterion": None,
+    },
 ]
 
 WARDROBES = ("example", "empty")
