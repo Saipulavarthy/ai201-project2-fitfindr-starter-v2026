@@ -103,6 +103,14 @@ def search_listings(
     if not keywords:
         return []
 
+    # The last keyword in the order the user typed it, using the same tokens
+    # as _words. In "oversized corduroy jacket" it's the noun, "jacket".
+    in_order = [
+        w for w in re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)*", text.lower())
+        if w not in _STOPWORDS and len(w) > 1
+    ]
+    last_keyword = in_order[-1]
+
     wanted_size = size.strip().lower() if size else None
 
     scored = []
@@ -123,10 +131,12 @@ def search_listings(
         ]))
         score = len(keywords & haystack)
         if score > 0:
-            scored.append((score, listing))
+            in_title = last_keyword in _words(listing["title"] or "")
+            scored.append((score, in_title, listing))
 
-    scored.sort(key=lambda pair: (-pair[0], pair[1]["price"]))
-    return [listing for _, listing in scored[: config.SEARCH_RESULT_LIMIT]]
+    # Score first; on a tie, the last keyword in the title wins; then price.
+    scored.sort(key=lambda row: (-row[0], not row[1], row[2]["price"]))
+    return [listing for _, _, listing in scored[: config.SEARCH_RESULT_LIMIT]]
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────

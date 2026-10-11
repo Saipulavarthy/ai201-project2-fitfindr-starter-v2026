@@ -76,7 +76,7 @@ def search_listings(
     max_price: float | None = None,
 ) -> list[dict]:
     """
-    Search secondhand clothing listings by keyword description (str, e.g. "vintage graphic tee"), optional size (str, matched case-insensitively against the whole listing size or one piece of it, e.g. "M" matches "S/M"), and optional max_price (float, in US dollars, inclusive); omit size or max_price to skip that filter. Returns a list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), ranked by number of matching description words and then lowest price, and returns an empty list [] when nothing matches.
+    Search secondhand clothing listings by keyword description (str, e.g. "vintage graphic tee"), optional size (str, matched case-insensitively against the whole listing size or one piece of it, e.g. "M" matches "S/M"), and optional max_price (float, in US dollars, inclusive); omit size or max_price to skip that filter. Returns a list of full listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), ranked by number of matching description words, then listings whose title contains the query's last keyword, then lowest price, and returns an empty list [] when nothing matches.
     """
     return _search_listings_impl(description, size, max_price)
 
