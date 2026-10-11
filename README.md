@@ -363,26 +363,51 @@ full. -->
 
      `python run_eval.py --label after` -->
 
-**What I changed:**
+**What I changed.** One change in `tools.py::search_listings`: ties on the number of matching words are now broken first by whether the query's last keyword (the last non-filler word as typed, e.g. "jacket" in "oversized corduroy jacket") is a whole word in the listing's title, then by lower price. It is a tie-breaker only and adds nothing to the score. I also updated the two places that describe the ranking (the Tool Inventory text in this README and the `search_listings` description in `mcp_server.py`) so they match; that is documentation, not a second change.
 
-**Which failure it was meant to fix:**
+**Why I picked it.** My diagnosis found no missed criterion, but it did find a problem none of my criteria catch: for 'oversized corduroy jacket', the data has no corduroy jacket, and search_listings scored every listing 1, so price alone decided the order and a Tie-Dye Long Sleeve came first. I picked a ranking change over a "no exact match" message because it was the smaller change, and I checked without calling the model that it changed the top result for only that one query out of the six I tried.
+
+**How I measured it.** I added one diagnostic scenario, "near-match ranking" (query `oversized corduroy jacket`, no price cap, because both jackets in the data cost over $40 and a $40 cap removes them before ranking). It is not one of my five criteria. I wrote the PASS rule before running: PASS = the selected item's title contains the word "Jacket". Because search_listings involves no model, its five tries are identical by design, so that is not a sign caching was on. The baseline for this comparison is `results/run_2026-10-11_0025_before-b.md`, run with the same seven scenarios as the after run, `results/run_2026-10-11_0034_after.md`. The "Run Log — Before" above is from my first run, which had six scenarios.
+
+**Did it help?** Yes, on the scenario it targeted: near-match ranking went from 0/5 (Tie-Dye Long Sleeve every try) to 5/5 (Denim Jacket every try). Nothing else moved: criteria 1, 2, 3 and 5 are 5/5 in both runs, and the selected items for the denim jacket and leather jacket scenarios are unchanged. This shows the tie-breaker does what it says; it does not show search got better in general. The scenario was built to test this fix, a Denim Jacket is still not a corduroy jacket, and the agent still presents it without saying it is a near match. None of my five criteria measure this problem, so their numbers did not change. Side effect: lower ranks moved in two other queries (for "leather jacket under $80" the Denim Jacket and Track Jacket went from 5th and 6th to 2nd and 3rd, ahead of the Leather Belt), which no criterion covers. (That ranking comes from calling search_listings directly, not from the saved run logs, which only keep the top 3 titles.)
+
+<!-- If it made things worse, say that. Honestly reported, that earns full
+     credit and is more interesting than one that worked. -->
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Full three-tool run returns a fit card | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Empty search stops before suggest_outfit | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Item logged for both tools equals session["selected_item"] | 5 of 5 | PASS* | PASS* | PASS* | PASS* | PASS* | see Verdicts section |
+| 4. Fit card ≤3 sentences, has a title word, no [FALLBACK] | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Query parsed to max_price 30 and size "M" | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| near-match ranking (diagnostic, not one of my five) | PASS = title contains "Jacket" | PASS | PASS | PASS | PASS | PASS | before: FAIL 0/5, after: PASS 5/5 |
 
-**Did it help, and how do I know:**
+\* Criterion 3 scored on title, price and platform only (see Verdicts and Diagnoses).
 
-<!-- If it made things worse, say that. Honestly reported, that earns full
-     credit and is more interesting than one that worked. -->
+Criterion 4 note: counted at most 3 sentences per card in both runs, reading as prose (a decimal price like "$75.00" or an emoji after the last period is not a sentence break). In the after run, tries 2 and 4 have exactly 3 sentences, the limit; the baseline had at most 2. I attribute this to sampling, since the ranking change does not touch the fit card prompt.
 
+Real output (copied verbatim from the results files; search_listings is `tools.py`, trace by `trace.py::step`, report by `run_eval.py::write_report`). Scenario "near-match ranking", try 1 of each run.
 
+Before (`results/run_2026-10-11_0025_before-b.md`):
+
+```text
+- selected_item: Tie-Dye Long Sleeve — Pastel ($17.0, depop)
+[1] search_listings (via MCP)
+      in:  description='oversized corduroy jacket', size=None, max_price=None
+      out: 10 items: Tie-Dye Long Sleeve — Pastel, Oversized Crewneck Sweatshirt — Vintage Navy, Oversized College Crewneck — Faded Red … +7 more
+```
+
+After (`results/run_2026-10-11_0034_after.md`):
+
+```text
+- selected_item: Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+[1] search_listings (via MCP)
+      in:  description='oversized corduroy jacket', size=None, max_price=None
+      out: 10 items: Denim Jacket — Light Wash, Cropped, 90s Track Jacket — Navy/White Stripe, Tie-Dye Long Sleeve — Pastel … +7 more
+```
 
 ---
 
