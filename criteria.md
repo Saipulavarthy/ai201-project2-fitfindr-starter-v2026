@@ -43,6 +43,10 @@ This path involves no model. It depends only on search returning an empty list a
 
 Given a query that matches at least one listing, the item dictionary logged by `trace.step` for `suggest_outfit` and for `create_fit_card` equals `session["selected_item"]`, in 5 of 5 tries.
 
+> **Revised in unit 4:** For the same matching query, the title, price and platform shown in the trace's suggest_outfit and create_fit_card input lines match the title, price and platform of session["selected_item"], 5 of 5 tries.
+>
+> **Why revised:** The original asked for the full dictionary as logged by trace.step, but trace.step logs a string and logs the session's own object, so the original couldn't be measured. The revision is weaker than the original.
+
 
 **Why this target:**
 Comparing the full dictionary, not just the ID, catches an item that arrives with fields altered or dropped. The check covers the hand-off from the loop to each tool, and because the loop reads the item from the session for both calls and involves no model, it should hold every time, so 5 of 5 is fair.

@@ -309,17 +309,17 @@ Note on scoring criterion 4: case was ignored when checking for title words (Lea
      Look for a pattern. Three misses on the same tool is one problem, not
      three. -->
 
-| # | Criterion | Target | Verdict | How I decided |
-|---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+**Criterion 1: MET (5/5, target 4 of 5).** All five tries ran search_listings, suggest_outfit and create_fit_card and printed a fit card. I counted a try as passing when all three steps appeared in the trace, since trace.step only runs after a tool call returns. No misses, so nothing to diagnose. My original reason for 4 of 5 was that model calls can fail or return something unusable. One run of 5/5 doesn't show that reason was wrong, only that it didn't happen in these five tries, and five tries is a small sample, so I can't say the target was too low from this run alone.
 
-**Diagnoses**
+**Criterion 2: MET (5/5, target 5 of 5).** The impossible query ("designer ballgown size XXS under $5") returned an empty list in every try, the loop's branch stopped before suggest_outfit, and the message named what to change. The empty list survived the MCP round trip as `[]`, which is what I was most worried about after moving search_listings behind MCP.
 
+**Criterion 3: not measurable as written.** The criterion says the item dictionary logged by trace.step for suggest_outfit and create_fit_card equals session["selected_item"]. The trace stores a string (Title, price, platform), not a dictionary, and agent.py passes session["selected_item"] itself to trace.step, so the logged item is the session's own object. The comparison can't fail even in principle. What I could check, and did in all five tries, is that title, price and platform in the step 2 and step 3 `in:` lines match the selected item. That is a weaker check than my criterion, so I'm not calling it MET against the original wording. (Revision in criteria.md.)
 
+**Criterion 4: MET (5/5, target 5 of 5).** Every fit card had 3 sentences or fewer, contained "Leather" and "Bomber" (case ignored), and none started with [FALLBACK]. The only ambiguous count was try 1, where the decimal point in "$75.00," makes a plain split give 3 pieces and a prose reading give 2; both are within the limit. This criterion is easy to pass: the query itself says "leather jacket", so a title word almost always shows up, and I'd tighten it to require the price or the item's full name.
+
+**Criterion 5: MET (5/5, target 5 of 5).** The step 1 trace showed size='M' and max_price=30.0 in all five tries. The check is indirect because the report doesn't save session["parsed"], but the trace line is built from it.
+
+**Pattern.** There were no misses, so there is no failing step to name. The weak spots are in the measuring, not the agent: criterion 3 can't be measured, criterion 4 is lenient, and criterion 1's 4-of-5 target may be low, though one 5/5 run can't show that. One problem none of my criteria catch: for the query 'oversized corduroy jacket under $40', the 40 listings contain no corduroy jacket, so the search can only return near matches. But search_listings scores each listing by how many description words it matches and breaks ties by lowest price, so the Corduroy Wide-Leg Pants rank 5th behind four 'oversized' tops (including the tie-dye one), and the agent then styled a tie-dye top (the top hit) and presented it with no sign it wasn't a corduroy jacket. (The corduroy query came from a build run in my terminal, not from results/, so it isn't in the saved run log.)
 
 ---
 
