@@ -130,7 +130,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             })
             searched = (f"description={parsed['description']!r}, "
                         f"size={parsed['size']!r}, max_price={parsed['max_price']!r}")
-            trace.step("search_listings", inputs=searched,
+            trace.step("search_listings (via MCP)", inputs=searched,
                        returned=session["search_results"])
 
             # THE BRANCH: nothing to style, so stop before the model is called.

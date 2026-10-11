@@ -35,18 +35,31 @@ SCENARIOS = [
         "wardrobe": "empty",
         "criterion": None,
     },
-    # TODO: add what your criteria 3, 4 and 5 need.
-    #
-    # Set "criterion" to the number in criteria.md that the scenario tests.
-    # "criterion": None means a diagnostic run — useful to have, but it isn't
-    # one of your five, and run_eval.py marks it as such in the table.
-    #
-    # For a state criterion, any normal query works — what you're checking is
-    # what ends up in the session, not what the user typed.
-    #
-    # For a fit-card criterion, you probably want the SAME query listed more
-    # than once, or several different items, depending on what your criterion
-    # actually says.
+    {
+        # A normal query, a different item from criterion 1. Criterion 3 —
+        # the item handed to suggest_outfit and create_fit_card is the one in
+        # session["selected_item"].
+        "name": "selected item reaches both tools",
+        "query": "denim jacket under $50",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # The same item five times (the 90s Leather Bomber). Criterion 4 —
+        # 3 sentences or fewer, a title word, no [FALLBACK] marker.
+        "name": "fit card short and on-item",
+        "query": "leather jacket under $80",
+        "wardrobe": "example",
+        "criterion": 4,
+    },
+    {
+        # The exact query criterion 5 names. Criterion 5 — parsed max_price 30
+        # and size "M".
+        "name": "price and size parsed",
+        "query": "vintage graphic tee under $30, size M",
+        "wardrobe": "example",
+        "criterion": 5,
+    },
 ]
 
 WARDROBES = ("example", "empty")
