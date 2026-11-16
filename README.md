@@ -614,3 +614,49 @@ Criterion 1 missed because two of three trials had a warm ask over 10 seconds on
 **Diagnosis (criterion 1)**
 
 All nine cold asks were under 10 seconds (about 2.6 to 8.5). The asks that broke the target were warm: trial 1 warm08 at 28.5 seconds (`7c120131`) and trial 3 warm07 at 56.3 seconds, both with `model_calls_real` 3 and almost all of the time in `create_fit_card`, each matching a `[rate limit] service pushed back. Waiting Ns` line in the per-ask log (trial 1 warm08 waited 26 seconds). Trial 2 warm06 reached 8.6 seconds with the same retry pattern but still passed the under-10 cut. The slow stage is the Gemini call inside `generate.py`, retried by its backoff when the service pushes back. The warm battery sends about twenty model calls in roughly forty-five seconds (about 27 a minute), above `REQUESTS_PER_MINUTE` of 15, so the service pushed back and `generate.py` slept for the hinted delay. Slow runs followed bursts of about 13 to 24 logged calls in the previous minute, versus about 11 on many normal runs, but trial 2 warm08 had a high count and stayed fast, so a burst goes with slowness without guaranteeing it. Those counts are approximate because log timestamps are end-of-run. The per-process pacer is not the whole story: the slow overlap-test runs happened inside one `serve.py` process. I did not confirm the API’s real limit. Trial 2 cold3 took 8.5 seconds with no retry line and no separate explanation. The cold asks ran as fresh processes after sixteen idle minutes, not in a literal new Terminal window. The earlier unexplained ~180-second stalls are not shown to be the same cause; those traces showed 2 model calls, while a retried run shows 3. Criterion 1 was measurable and missed, so I am not revising it.
+
+**The Improvement**
+
+What I changed was two module-level counters in `generate.py` — how many times the existing rate-limit retry branch ran, and how many seconds of backoff it actually slept — plus two new fields on every `agent.py` log record, `retry_count` and `retry_wait_seconds`, written as per-run deltas the same way `model_calls_real` is. The counters increment only in that retry branch. I did not change retry logic, pacing, any delay value, stage order, tools, console output, or any existing log field. I made the change because, in the first run, I could only explain slow asks by digging through stderr files: the log showed a slow stage and an extra model call, but not that a rate-limit backoff had caused them. The instrumentation commit was `capstone: log retry_count and retry_wait_seconds per run`, made before the second run.
+
+I scored the five criteria again over three trials (`AI201_CACHE=0`, same query; Path B helpers under `~/capstone_results_after/`). Criterion 4 used `PORT=8765` from the start.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Every run under 10 s (`total_seconds`; 3 cold + 10 warm) | 13/13 | 12/13 | 11/13 | 7/13 | MISSED |
+| 2. Bad key leaves an `error` record | 3/3 | 3/3 | 3/3 | 3/3 | MET |
+| 3. Empty query via `run_agent` leaves `handled_error` | 5/5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Overlapping `python serve.py` asks run one after the other | 3/3 pairs | 3/3 | 3/3 | 3/3 | MET |
+| 5. Mean prompt+output tokens over 10 warm runs in 500–1000 | in band | 747.8 | 749.9 | 726.0 | MET |
+
+Before vs after (same rows):
+
+| Criterion | Before (R1 / R2 / R3) | After (R1 / R2 / R3) |
+|---|---|---|
+| 1. Under 10 s | 12/13, 13/13, 12/13 — MISSED | 12/13, 11/13, 7/13 — MISSED |
+| 2. Bad key → `error` | 3/3, 3/3, 3/3 — MET | 3/3, 3/3, 3/3 — MET |
+| 3. Empty → `handled_error` | 5/5, 5/5, 5/5 — MET | 5/5, 5/5, 5/5 — MET |
+| 4. Overlap serialize | 3/3, 3/3, 3/3 — MET\* | 3/3, 3/3, 3/3 — MET |
+| 5. Warm token mean in band | 747.6, 742.6, 746.1 — MET | 747.8, 749.9, 726.0 — MET |
+
+\*Before: first attempt on port 5000 failed to start; re-run with `PORT=8765` scored 3/3. After: `PORT=8765` from the start.
+
+**Real output.** Trial 2 warm06 (`fefa0325`) from `logs/runs.jsonl`, plus the matching rate-limit line from `~/capstone_results_after/c1_trial_2_warm06.txt`:
+
+```text
+{"timestamp": "2026-11-16T18:39:04.680552+00:00", "run_id": "fefa0325", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 535, "fit_card_len": 213}, "total_seconds": 33.09847579200141, "stage_seconds": {"search_listings": 0.5708085830010532, "suggest_outfit": 31.022095500000432, "create_fit_card": 1.503560582998034}, "model_calls_real": 3, "model_calls_cached": 0, "retry_count": 1, "retry_wait_seconds": 28.267438988, "prompt_tokens": 604, "output_tokens": 171, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+```text
+  [rate limit] service pushed back. Waiting 28s (attempt 1 of 5). This is the limiter doing its job, not a bug.
+```
+
+Trial 3 warm09 (`5bde21ae`) — slow with no retry, almost all time in `suggest_outfit`:
+
+```text
+{"timestamp": "2026-11-16T19:47:24.445844+00:00", "run_id": "5bde21ae", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 481, "fit_card_len": 234}, "total_seconds": 43.36955516600574, "stage_seconds": {"search_listings": 1.0829289169996628, "suggest_outfit": 41.51164437499392, "create_fit_card": 0.7694141250030953}, "model_calls_real": 2, "model_calls_cached": 0, "retry_count": 0, "retry_wait_seconds": 0.0, "prompt_tokens": 594, "output_tokens": 165, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+Did it help. Nine of the 39 runs took 10 seconds or more (1, 2, and 6 per trial). Only trial 2 warm06 involved a retry; its `total_seconds` minus `retry_wait_seconds` was 4.83 seconds, so the log now explains that ask fully. The other eight — trial 1 warm06 `08dc7b5b` (13.6 s), trial 2 warm07 `8f2c3a0f` (14.5 s), and trial 3 cold1 `81ebd189` (18.0 s), warm01 `1af07cd4` (15.5 s), warm03 `6f91ec04` (11.9 s), warm07 `760fa88b` (10.7 s), warm08 `3c6d3cf0` (20.4 s), warm09 `5bde21ae` (43.4 s) — had `retry_count` 0 and spent about 6 to 41 seconds inside a single Gemini call. So the change improved diagnosis, not the target: criterion 1 got worse (12/13, 13/13, 12/13 became 12/13, 11/13, 7/13), and the new fields show that my first diagnosis (rate-limit retries) covers the earlier slow runs and one of these but not most of them. Trial 3’s median `total_seconds` was 9.8 s against about 3.5 s in trials 1 and 2. The change only adds counters, so I do not think it caused the difference. In `generate.py`, `genai.Client(api_key=key)` and `generate_content` are created and called with no `http_options`, timeout, or SDK-level retry settings; the only intentional waits this file adds are local pacing in `_wait_for_slot` and the rate-limit backoff sleep. I have not confirmed whether the extra latency came from the API, from SDK-internal retries, or from time of day (a weak candidate, since trials 1 and 2 also ran at midday and were mostly fast) (the first run was late at night; trial 3 ran mid-afternoon). I am not stating a cause.
+
+One note on sleep: the Mac slept during idle gaps in trials 1 and 2 (the first gap lasted 9.4 hours), but every cold ask still followed at least 16 minutes with no FitFindr run, and the warm bursts (65, 97, and 157 seconds) had continuous timestamps, so sleep did not fall inside any warm burst.
