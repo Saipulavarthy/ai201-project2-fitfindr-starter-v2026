@@ -296,7 +296,7 @@ Every `run_agent()` call appends one JSON object as a single line to `logs/runs.
 
 ### Known behavior
 
-[COLD START NOTE: fill in after the cold-run test]
+In an earlier assistant shell, the first run of a session twice took about 180 seconds with almost no CPU use, and I could not explain it. A controlled test (sixteen minutes idle, then a cold run in a plain Terminal with the cache off) did not reproduce it: the cold run took 4.1 seconds and the warm run right after took 3.9 seconds. DNS returned only IPv4 addresses, and curl over IPv4 and IPv6 both connected in under 0.2 seconds, so IPv6 is ruled out. I did not find the cause, so I treat first-request time as unverified.
 
 ### Empty query on the command line
 
