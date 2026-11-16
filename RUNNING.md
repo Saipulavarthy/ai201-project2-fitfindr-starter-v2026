@@ -246,3 +246,58 @@ history is what shows your criteria existed before your results did.
 units.
 
 `results/` is deliberately **not** in `.gitignore`.
+
+## Capstone — Path B (local with logs)
+
+FitFindr is a thrifting agent that parses a plain-language query, searches local secondhand listings through a local MCP tool, then calls Gemini for an outfit suggestion and a fit card; the only external service it needs is the Gemini API, and there are no local model files or other large downloads.
+
+### Environment
+
+This repo was developed on Python 3.11.7. `requirements.txt` supports Python 3.11, 3.12, or 3.13, and not 3.14. The installed dependency versions in this environment are python-dotenv 1.1.1, google-genai 1.75.0, mcp 1.30.0, flask 3.1.3, and gunicorn 23.0.0, which sit inside the ranges pinned in `requirements.txt` (`python-dotenv>=1.0,<1.2`, `google-genai>=1.0,<2.0`, `mcp>=1.0,<2.0`, `flask>=3.0,<4.0`, `gunicorn>=21.2,<24.0`). Do not run `pip install --upgrade` inside this project's virtual environment.
+
+### Setup from a clean clone
+
+Clone the repository, create a virtual environment, activate it, install the requirements, and create a `.env` file that holds your Gemini key. `.env` is gitignored and must never be committed.
+
+```bash
+git clone <your-repo-url>
+cd ai201-project2-fitfindr-starter-v2026
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edit `.env` and set `GEMINI_API_KEY` to your key from Google AI Studio. On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` and copy the example with `copy .env.example .env`.
+
+### Start command
+
+From the repo root with `.venv` activated, run one ask. Use single quotes so the shell does not expand `$30`.
+
+```bash
+python app.py ask 'vintage graphic tee under $30'
+```
+
+A successful run prints the three loop steps (`search_listings` via MCP, then `suggest_outfit`, then `create_fit_card`), then a Found line with the chosen item's title, price, and platform, the Outfit prose, the Fit card caption, and a final usage line counting model calls for the session.
+
+### Real API calls versus cache
+
+By default the response cache is on, so identical prompts can be served from `.cache/` and cost nothing. To force real Gemini calls for a cost measurement, turn the cache off for that process:
+
+```bash
+AI201_CACHE=0 python app.py ask 'vintage graphic tee under $30'
+```
+
+With the cache on, a warm re-run of the same query can show `0 model calls this session` and a non-zero count of answers served from cache.
+
+### Where the log goes
+
+Every `run_agent()` call appends one JSON object as a single line to `logs/runs.jsonl` (the `logs/` directory is created if it is missing). Each record includes `timestamp` (UTC ISO 8601), `run_id` (a short random id), `query` (the raw input string), `status` (`ok`, `handled_error`, or `error`), `error_type` and `error_message` (set when an exception was raised, otherwise null), `session_error` (the handled early-stop message from `session["error"]`, otherwise null), `output_summary` (chosen item title plus character lengths of the outfit and fit-card text, not the full text), `total_seconds`, `stage_seconds` (timings for `search_listings`, `suggest_outfit`, and `create_fit_card`, with null for any stage that did not run), `model_calls_real` and `model_calls_cached`, `prompt_tokens` and `output_tokens`, `model`, and `cache_enabled`. The log is written in a `finally` block so a failing run still leaves a record; log I/O failures print one warning to stderr and do not crash the agent.
+
+### Known behavior
+
+[COLD START NOTE: fill in after the cold-run test]
+
+### Empty query on the command line
+
+`python app.py ask ''` does not call the agent with an empty string. Because `app.py` treats a falsy query as “no query argument,” it enters interactive ask mode instead. To exercise an empty input through the logger, call `run_agent("", …)` from Python, or use a non-empty query that is meant to fail.
