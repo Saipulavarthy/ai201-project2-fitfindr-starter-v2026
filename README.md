@@ -535,3 +535,82 @@ Handled empty-query run (`status` `handled_error`):
 **What It Costs**
 
 Ten sequential runs of `vintage graphic tee under $30` with `AI201_CACHE=0` and a two-second pause between them averaged 2.55 seconds of `total_seconds` in the log (min 2.23, max 3.19), with mean 587 prompt tokens and 150 output tokens, or 737 tokens total per run. Those token and timing figures are measured from the log fields themselves. At the published list price of $0.30 per million input tokens and $2.50 per million output tokens, one run is about $0.00055, so 100 runs a day (one per person) is about $0.055 a day, or roughly $1.65 for thirty days; the dollar figure uses that list price rather than a billed invoice. The logged `output_tokens` count only `candidates_token_count` from the API response, not thinking tokens, so the dollar cost may be slightly understated if the model bills thinking separately.
+
+**Run Log and Verdicts**
+
+I scored the five capstone criteria over three trials. Latency and token means come from the stage2 cold/warm series (`AI201_CACHE=0`, query `vintage graphic tee under $30`); the bad-key, empty-query, and overlap checks reuse the earlier helper runs under `~/capstone_results/`. Every log line below was written by `agent.py::run_agent` into `logs/runs.jsonl`. The stage2 driver and scorers live outside the repo in `~/capstone_scripts/`.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Every run under 10 s (`total_seconds`; 3 cold + 10 warm) | 13/13 | 12/13 | 13/13 | 12/13 | MISSED |
+| 2. Bad key leaves an `error` record | 3/3 | 3/3 | 3/3 | 3/3 | MET |
+| 3. Empty query via `run_agent` leaves `handled_error` | 5/5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Overlapping `python serve.py` asks run one after the other | 3/3 pairs | 3/3\* | 3/3\* | 3/3\* | MET |
+| 5. Mean prompt+output tokens over 10 warm runs in 500–1000 | in band | 747.6 | 742.6 | 746.1 | MET |
+
+\*First attempt on default port 5000 scored 0/3 each trial because `serve.py` could not start (macOS AirPlay holds that port). Re-run with `PORT=8765` scored 3/3. Criterion 5’s band was set after I had already measured about 737, so it could only fail if token counting broke.
+
+**Criterion 1 — real output.** Slow trial-1 warm08 (`7c120131`) and one normal run (`a0658af3`), from `logs/runs.jsonl` via `agent.py::run_agent`, plus the matching rate-limit line from `~/capstone_results/c1_trial_1_warm08.txt`:
+
+```text
+{"timestamp": "2026-11-16T04:08:01.795315+00:00", "run_id": "7c120131", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 483, "fit_card_len": 228}, "total_seconds": 28.542547250002826, "stage_seconds": {"search_listings": 0.4759977499998058, "suggest_outfit": 1.1666533749994414, "create_fit_card": 26.898396042000968}, "model_calls_real": 3, "model_calls_cached": 0, "prompt_tokens": 603, "output_tokens": 171, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+```text
+{"timestamp": "2026-11-16T04:06:58.305203+00:00", "run_id": "a0658af3", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 569, "fit_card_len": 225}, "total_seconds": 2.6673536250018515, "stage_seconds": {"search_listings": 0.5938685829969472, "suggest_outfit": 1.402196458002436, "create_fit_card": 0.6707761249999749}, "model_calls_real": 2, "model_calls_cached": 0, "prompt_tokens": 603, "output_tokens": 169, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+```text
+  [rate limit] service pushed back. Waiting 26s (attempt 1 of 5). This is the limiter doing its job, not a bug.
+```
+
+**Criterion 2 — real output** (`188f1a4e`, invalid-key ask → `run_agent`):
+
+```text
+{"timestamp": "2026-11-16T03:40:03.536645+00:00", "run_id": "188f1a4e", "query": "vintage graphic tee under $30", "status": "error", "error_type": "ModelUnavailable", "error_message": "The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.", "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": null, "fit_card_len": null}, "total_seconds": 1.2817572909989394, "stage_seconds": {"search_listings": 0.66081183300048, "suggest_outfit": null, "create_fit_card": null}, "model_calls_real": 1, "model_calls_cached": 0, "prompt_tokens": 0, "output_tokens": 0, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+**Criterion 3 — real output** (`6a9d6df5`, `run_agent("", …)`):
+
+```text
+{"timestamp": "2026-11-16T03:40:10.081983+00:00", "run_id": "6a9d6df5", "query": "", "status": "handled_error", "error_type": null, "error_message": null, "session_error": "No listings matched (description \"\", size any, max price none). Try to try different or fewer description words.", "output_summary": {"item_title": null, "outfit_len": null, "fit_card_len": null}, "total_seconds": 0.48879916700025206, "stage_seconds": {"search_listings": 0.48845754099966143, "suggest_outfit": null, "create_fit_card": null}, "model_calls_real": 0, "model_calls_cached": 0, "prompt_tokens": 0, "output_tokens": 0, "model": "gemini-3.5-flash-lite", "cache_enabled": true}
+```
+
+**Criterion 4 — real output** (overlap pair, `5993e215` then `c6763798`):
+
+```text
+{"timestamp": "2026-11-16T03:42:22.791864+00:00", "run_id": "5993e215", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 403, "fit_card_len": 223}, "total_seconds": 2.9062702090013772, "stage_seconds": {"search_listings": 0.6079412079998292, "suggest_outfit": 1.4983136669998203, "create_fit_card": 0.7994895829997404}, "model_calls_real": 2, "model_calls_cached": 0, "prompt_tokens": 572, "output_tokens": 133, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+{"timestamp": "2026-11-16T03:42:24.889268+00:00", "run_id": "c6763798", "query": "vintage graphic tee under $30", "status": "ok", "error_type": null, "error_message": null, "session_error": null, "output_summary": {"item_title": "Y2K Baby Tee — Butterfly Print", "outfit_len": 513, "fit_card_len": 272}, "total_seconds": 2.093659000000116, "stage_seconds": {"search_listings": 0.37967283299985866, "suggest_outfit": 0.9704770000007557, "create_fit_card": 0.7425342090009508}, "model_calls_real": 2, "model_calls_cached": 0, "prompt_tokens": 605, "output_tokens": 178, "model": "gemini-3.5-flash-lite", "cache_enabled": false}
+```
+
+```text
+earlier start = timestamp - total_seconds = 2026-11-16T03:42:22.791864+00:00 - 2.9062702090013772s
+             = 2026-11-16T03:42:19.885594+00:00
+later start   = 2026-11-16T03:42:24.889268+00:00 - 2.093659000000116s
+             = 2026-11-16T03:42:22.795609+00:00
+later start (03:42:22.795609) >= earlier timestamp - 0.1s (03:42:22.691864)
+```
+
+**Criterion 5 — real output.** Trial 1 warm prompt/output pairs from `logs/runs.jsonl` (labels via `~/capstone_results/stage2_output.txt` markers):
+
+```text
+warm01 7d15a4f0  prompt=566 output=131  sum=697
+warm02 35dd347b  prompt=583 output=147  sum=730
+warm03 56ef3cc3  prompt=604 output=171  sum=775
+warm04 23a4efb4  prompt=571 output=145  sum=716
+warm05 b80c0965  prompt=585 output=150  sum=735
+warm06 be659fc9  prompt=605 output=171  sum=776
+warm07 59ad5d35  prompt=607 output=174  sum=781
+warm08 7c120131  prompt=603 output=171  sum=774
+warm09 cfd785fa  prompt=579 output=144  sum=723
+warm10 02ffc343  prompt=597 output=172  sum=769
+mean sum = 747.6
+```
+
+**Verdict reasoning**
+
+Criterion 1 missed because two of three trials had a warm ask over 10 seconds on `total_seconds`, so the score was 12/13, 13/13, 12/13 rather than 13/13. Criterion 2 met: every invalid-key try exited non-zero and logged `status` `error` with `ModelUnavailable`. Criterion 3 met: every direct empty `run_agent("")` call logged `handled_error` with a non-empty `session_error` and null model-stage timings. Criterion 4 met on the `PORT=8765` re-run: overlapping asks serialized and both left `ok` lines. Criterion 5 met: all three warm-batch means sat inside 500–1000.
+
+**Diagnosis (criterion 1)**
+
+All nine cold asks were under 10 seconds (about 2.6 to 8.5). The asks that broke the target were warm: trial 1 warm08 at 28.5 seconds (`7c120131`) and trial 3 warm07 at 56.3 seconds, both with `model_calls_real` 3 and almost all of the time in `create_fit_card`, each matching a `[rate limit] service pushed back. Waiting Ns` line in the per-ask log (trial 1 warm08 waited 26 seconds). Trial 2 warm06 reached 8.6 seconds with the same retry pattern but still passed the under-10 cut. The slow stage is the Gemini call inside `generate.py`, retried by its backoff when the service pushes back. The warm battery sends about twenty model calls in roughly forty-five seconds (about 27 a minute), above `REQUESTS_PER_MINUTE` of 15, so the service pushed back and `generate.py` slept for the hinted delay. Slow runs followed bursts of about 13 to 24 logged calls in the previous minute, versus about 11 on many normal runs, but trial 2 warm08 had a high count and stayed fast, so a burst goes with slowness without guaranteeing it. Those counts are approximate because log timestamps are end-of-run. The per-process pacer is not the whole story: the slow overlap-test runs happened inside one `serve.py` process. I did not confirm the API’s real limit. Trial 2 cold3 took 8.5 seconds with no retry line and no separate explanation. The cold asks ran as fresh processes after sixteen idle minutes, not in a literal new Terminal window. The earlier unexplained ~180-second stalls are not shown to be the same cause; those traces showed 2 model calls, while a retried run shows 3. Criterion 1 was measurable and missed, so I am not revising it.
