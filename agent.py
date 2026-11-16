@@ -211,6 +211,10 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         item = session.get("selected_item") or {}
         outfit = session.get("outfit_suggestion")
         fit_card = session.get("fit_card")
+        session_error = session.get("error")
+        # Handled early-stop (e.g. empty search) is not an exception.
+        if status != "error" and session_error:
+            status = "handled_error"
         tokens_after = generate.token_counts()
         # Deltas from the session counters; null only if counts are missing.
         try:
@@ -227,6 +231,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             "status": status,
             "error_type": error_type,
             "error_message": error_message,
+            "session_error": session_error,
             "output_summary": {
                 "item_title": item.get("title"),
                 "outfit_len": len(outfit) if isinstance(outfit, str) else None,
