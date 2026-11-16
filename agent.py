@@ -13,13 +13,32 @@ Build and test your three tools in `tools.py` first. Then come here.
     python agent.py          runs both example paths below
 """
 
+import json
 import re
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
 import config
+import generate
 import trace
 from tools import suggest_outfit, create_fit_card
 from generate import ModelUnavailable
 from mcp_client import call_tool
+
+_LOG_PATH = Path(__file__).parent / "logs" / "runs.jsonl"
+
+
+def _append_run_log(record: dict) -> None:
+    """Append one JSONL record. Never raise into the agent run."""
+    try:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:  # noqa: BLE001 — logging must not crash a run
+        print(f"warning: failed to write run log: {exc}", file=sys.stderr)
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -111,55 +130,118 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     trace.start_trace()
     session = new_session(query, wardrobe)
 
-    next_step = "parse"
-    count = 0
-    while next_step != "done":
-        count += 1
-        trace.check_iterations(count)
+    run_id = uuid.uuid4().hex[:8]
+    t0 = time.monotonic()
+    stage_seconds = {
+        "search_listings": None,
+        "suggest_outfit": None,
+        "create_fit_card": None,
+    }
+    calls_before = generate.call_count()
+    cache_before = generate._cache_hits
+    tokens_before = generate.token_counts()
+    status = "ok"
+    error_type = None
+    error_message = None
 
-        if next_step == "parse":
-            session["parsed"] = _parse_query(session["query"])
-            next_step = "search"
+    try:
+        next_step = "parse"
+        count = 0
+        while next_step != "done":
+            count += 1
+            trace.check_iterations(count)
 
-        elif next_step == "search":
-            parsed = session["parsed"]
-            session["search_results"] = call_tool("search_listings", {
-                "description": parsed["description"],
-                "size": parsed["size"],
-                "max_price": parsed["max_price"],
-            })
-            searched = (f"description={parsed['description']!r}, "
-                        f"size={parsed['size']!r}, max_price={parsed['max_price']!r}")
-            trace.step("search_listings (via MCP)", inputs=searched,
-                       returned=session["search_results"])
+            if next_step == "parse":
+                session["parsed"] = _parse_query(session["query"])
+                next_step = "search"
 
-            # THE BRANCH: nothing to style, so stop before the model is called.
-            if not session["search_results"]:
-                session["error"] = _no_results_message(parsed)
-                trace.step("branch", inputs=searched, returned=[],
-                           note="branch: empty results, stopping before suggest_outfit")
+            elif next_step == "search":
+                parsed = session["parsed"]
+                t_stage = time.monotonic()
+                session["search_results"] = call_tool("search_listings", {
+                    "description": parsed["description"],
+                    "size": parsed["size"],
+                    "max_price": parsed["max_price"],
+                })
+                stage_seconds["search_listings"] = time.monotonic() - t_stage
+                searched = (f"description={parsed['description']!r}, "
+                            f"size={parsed['size']!r}, max_price={parsed['max_price']!r}")
+                trace.step("search_listings (via MCP)", inputs=searched,
+                           returned=session["search_results"])
+
+                # THE BRANCH: nothing to style, so stop before the model is called.
+                if not session["search_results"]:
+                    session["error"] = _no_results_message(parsed)
+                    trace.step("branch", inputs=searched, returned=[],
+                               note="branch: empty results, stopping before suggest_outfit")
+                    next_step = "done"
+                else:
+                    session["selected_item"] = session["search_results"][0]
+                    next_step = "outfit"
+
+            elif next_step == "outfit":
+                t_stage = time.monotonic()
+                session["outfit_suggestion"] = suggest_outfit(
+                    session["selected_item"], session["wardrobe"]
+                )
+                stage_seconds["suggest_outfit"] = time.monotonic() - t_stage
+                trace.step("suggest_outfit", inputs=session["selected_item"],
+                           returned=session["outfit_suggestion"])
+                next_step = "fit_card"
+
+            elif next_step == "fit_card":
+                t_stage = time.monotonic()
+                session["fit_card"] = create_fit_card(
+                    session["outfit_suggestion"], session["selected_item"]
+                )
+                stage_seconds["create_fit_card"] = time.monotonic() - t_stage
+                trace.step("create_fit_card", inputs=session["selected_item"],
+                           returned=session["fit_card"])
                 next_step = "done"
-            else:
-                session["selected_item"] = session["search_results"][0]
-                next_step = "outfit"
 
-        elif next_step == "outfit":
-            session["outfit_suggestion"] = suggest_outfit(
-                session["selected_item"], session["wardrobe"]
-            )
-            trace.step("suggest_outfit", inputs=session["selected_item"],
-                       returned=session["outfit_suggestion"])
-            next_step = "fit_card"
+        return session
 
-        elif next_step == "fit_card":
-            session["fit_card"] = create_fit_card(
-                session["outfit_suggestion"], session["selected_item"]
-            )
-            trace.step("create_fit_card", inputs=session["selected_item"],
-                       returned=session["fit_card"])
-            next_step = "done"
+    except Exception as exc:
+        status = "error"
+        error_type = type(exc).__name__
+        error_message = str(exc)
+        raise
 
-    return session
+    finally:
+        item = session.get("selected_item") or {}
+        outfit = session.get("outfit_suggestion")
+        fit_card = session.get("fit_card")
+        tokens_after = generate.token_counts()
+        # Deltas from the session counters; null only if counts are missing.
+        try:
+            prompt_tokens = tokens_after["prompt"] - tokens_before["prompt"]
+            output_tokens = tokens_after["output"] - tokens_before["output"]
+        except Exception:  # noqa: BLE001
+            prompt_tokens = None
+            output_tokens = None
+
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
+            "query": query,
+            "status": status,
+            "error_type": error_type,
+            "error_message": error_message,
+            "output_summary": {
+                "item_title": item.get("title"),
+                "outfit_len": len(outfit) if isinstance(outfit, str) else None,
+                "fit_card_len": len(fit_card) if isinstance(fit_card, str) else None,
+            },
+            "total_seconds": time.monotonic() - t0,
+            "stage_seconds": stage_seconds,
+            "model_calls_real": generate.call_count() - calls_before,
+            "model_calls_cached": generate._cache_hits - cache_before,
+            "prompt_tokens": prompt_tokens,
+            "output_tokens": output_tokens,
+            "model": config.MODEL,
+            "cache_enabled": config.CACHE_ENABLED,
+        }
+        _append_run_log(record)
 
 
 # ── query parsing ─────────────────────────────────────────────────────────────
