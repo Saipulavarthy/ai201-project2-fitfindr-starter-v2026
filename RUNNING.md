@@ -253,22 +253,23 @@ FitFindr is a thrifting agent that parses a plain-language query, searches local
 
 ### Environment
 
-This repo was developed on Python 3.11.7. `requirements.txt` supports Python 3.11, 3.12, or 3.13, and not 3.14. The installed dependency versions in this environment are python-dotenv 1.1.1, google-genai 1.75.0, mcp 1.30.0, flask 3.1.3, and gunicorn 23.0.0, which sit inside the ranges pinned in `requirements.txt` (`python-dotenv>=1.0,<1.2`, `google-genai>=1.0,<2.0`, `mcp>=1.0,<2.0`, `flask>=3.0,<4.0`, `gunicorn>=21.2,<24.0`). Do not run `pip install --upgrade` inside this project's virtual environment.
+This repo was developed on Python 3.11.7. `requirements.txt` supports Python 3.11, 3.12, or 3.13, and not 3.14. On the author's machine the install resolved to python-dotenv 1.1.1, google-genai 1.75.0, mcp 1.30.0, flask 3.1.3, and gunicorn 23.0.0; after `pip install -r requirements.txt` you should get versions inside the ranges pinned there (`python-dotenv>=1.0,<1.2`, `google-genai>=1.0,<2.0`, `mcp>=1.0,<2.0`, `flask>=3.0,<4.0`, `gunicorn>=21.2,<24.0`), which may differ slightly from those exact numbers. Do not run `pip install --upgrade` inside this project's virtual environment.
 
 ### Setup from a clean clone
 
-Clone the repository, create a virtual environment, activate it, install the requirements, and create a `.env` file that holds your Gemini key. `.env` is gitignored and must never be committed.
+Clone the repository, create a virtual environment, activate it, install the requirements, and create a `.env` file that holds your Gemini key. `.env` is gitignored and must never be committed. The first `pip install` needs a working network; in a clean-clone test on this machine it took about four minutes.
 
 ```bash
 git clone <your-repo-url>
-cd ai201-project2-fitfindr-starter-v2026
+cd <the-directory-you-cloned-into>
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+# Edit .env and replace your_key_here with a real GEMINI_API_KEY from Google AI Studio.
 ```
 
-Edit `.env` and set `GEMINI_API_KEY` to your key from Google AI Studio. On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` and copy the example with `copy .env.example .env`.
+Until `GEMINI_API_KEY` is a real key, `python app.py ask ...` fails with a missing-key error or `ModelUnavailable`. Optionally run `python test.py` afterward; it checks that the key is present and makes one real model call. On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` and copy the example with `copy .env.example .env`.
 
 ### Start command
 
@@ -292,7 +293,7 @@ With the cache on, a warm re-run of the same query can show `0 model calls this 
 
 ### Where the log goes
 
-Every `run_agent()` call appends one JSON object as a single line to `logs/runs.jsonl` (the `logs/` directory is created if it is missing). Each record includes `timestamp` (UTC ISO 8601), `run_id` (a short random id), `query` (the raw input string), `status` (`ok`, `handled_error`, or `error`), `error_type` and `error_message` (set when an exception was raised, otherwise null), `session_error` (the handled early-stop message from `session["error"]`, otherwise null), `output_summary` (chosen item title plus character lengths of the outfit and fit-card text, not the full text), `total_seconds`, `stage_seconds` (timings for `search_listings`, `suggest_outfit`, and `create_fit_card`, with null for any stage that did not run), `model_calls_real` and `model_calls_cached`, `prompt_tokens` and `output_tokens`, `model`, and `cache_enabled`. The log is written in a `finally` block so a failing run still leaves a record; log I/O failures print one warning to stderr and do not crash the agent.
+Every `run_agent()` call appends one JSON object as a single line to `logs/runs.jsonl` (the `logs/` directory is created if it is missing). Each record includes `timestamp` (UTC ISO 8601), `run_id` (a short random id), `query` (the raw input string), `status` (`ok`, `handled_error`, or `error`), `error_type` and `error_message` (set when an exception was raised, otherwise null), `session_error` (the handled early-stop message from `session["error"]`, otherwise null), `output_summary` (chosen item title plus character lengths of the outfit and fit-card text, not the full text), `total_seconds`, `stage_seconds` (timings for `search_listings`, `suggest_outfit`, and `create_fit_card`, with null for any stage that did not run), `model_calls_real` and `model_calls_cached`, `prompt_tokens` and `output_tokens`, `model`, and `cache_enabled`. The log is written in a `finally` block so a failing run still leaves a record; log I/O failures print one warning to stderr and do not crash the agent. A fresh clone already contains lines in `logs/runs.jsonl` from earlier development and cost runs; for your own measurements, use only the new timestamps after you start, or move the file aside first so you begin from an empty log.
 
 ### Known behavior
 
