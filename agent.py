@@ -140,6 +140,8 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     calls_before = generate.call_count()
     cache_before = generate._cache_hits
     tokens_before = generate.token_counts()
+    retries_before = generate._retry_count
+    retry_wait_before = generate._retry_wait_seconds
     status = "ok"
     error_type = None
     error_message = None
@@ -241,6 +243,8 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             "stage_seconds": stage_seconds,
             "model_calls_real": generate.call_count() - calls_before,
             "model_calls_cached": generate._cache_hits - cache_before,
+            "retry_count": generate._retry_count - retries_before,
+            "retry_wait_seconds": generate._retry_wait_seconds - retry_wait_before,
             "prompt_tokens": prompt_tokens,
             "output_tokens": output_tokens,
             "model": config.MODEL,

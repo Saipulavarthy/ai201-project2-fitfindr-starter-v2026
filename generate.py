@@ -39,6 +39,8 @@ import config
 _call_times: list[float] = []
 _session_calls = 0
 _cache_hits = 0
+_retry_count = 0
+_retry_wait_seconds = 0.0
 _prompt_tokens = 0
 _output_tokens = 0
 _client = None
@@ -281,7 +283,7 @@ def generate(
     Every call in this course goes through here. If you need to change how the
     model is called, change it in this one place.
     """
-    global _session_calls, _cache_hits
+    global _session_calls, _cache_hits, _retry_count, _retry_wait_seconds
 
     use_cache = cache and config.CACHE_ENABLED
     temperature = config.TEMPERATURE if temperature is None else temperature
@@ -338,7 +340,9 @@ def generate(
                 file=sys.stderr,
                 flush=True,
             )
+            _retry_count += 1
             time.sleep(backoff)
+            _retry_wait_seconds += backoff
 
     raise RuntimeError(
         f"Still rate limited after {config.MAX_RETRIES} attempts. Wait a "
