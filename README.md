@@ -484,3 +484,15 @@ After (`results/run_2026-10-11_0034_after.md`):
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+## Capstone
+
+**What This Extends**
+
+This extends FitFindr, my AI 201 Project 2 thrifting agent. A user types a plain-language request; the query is parsed with regex, and `agent.py::run_agent` runs three tools in order: `search_listings` through a local MCP server, then `suggest_outfit` and `create_fit_card` through Gemini via `generate()`. What is new for the capstone is an operational layer on top of that loop: a documented run path that does not depend on my editor, structured JSON-lines logging of every run including failures (written inside `run_agent()`, already built), and a measured cost per run. The agent's behavior does not change.
+
+**The Shape**
+
+I picked Shape A (deploy and instrument). I am adding one structured log record per `run_agent()` call, with per-stage timings for the three tools, a cost figure for one run measured with the response cache turned off, and a written run path someone else can follow without living in this repo the way I do.
+
+What is out of scope is everything that would change how the agent thinks or presents itself. I am not adding or changing any of the three tools, not changing the planning loop or the session state, not rebuilding the command-line interface or `serve.py`, and not rewriting any other part of the system.
