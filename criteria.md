@@ -1,108 +1,31 @@
-# Acceptance criteria — FitFindr
+# Capstone acceptance criteria
 
-Five criteria that say what "working" means for this agent, written in unit 3
-**before** any results existed.
+## 1. Every run finishes in under 10 seconds, including the first ask after a quiet period
 
-An acceptance criterion names a target: a number, a count, a rate, or something
-a person could plainly observe. *"The agent handles errors"* is an opinion.
-*"When search returns nothing, the agent stops before calling the second tool,
-in 5 of 5 tries"* is a criterion.
+Target: every run has total_seconds under 10.0 in logs/runs.jsonl, across 3 cold first asks (each after at least 15 minutes with no FitFindr run, started in a fresh Terminal window) and 10 warm asks, all with AI201_CACHE=0 and the query 'vintage graphic tee under $30'. That is 13 of 13.
 
-Under each one, write a sentence or two on **why that target** and not a
-stricter one. A reason that says something about your tools, your loop, or the
-data earns credit; *"80% seemed reasonable"* does not.
+Why this target: My warm runs sit around 2 to 3 seconds and the one idle cold run was 4.1 seconds, so 10 seconds still clears ordinary Gemini jitter and a slightly slower first ask, but a 180-second hang would miss. Three cold runs is enough to see whether the first ask stays under the limit without turning the eval into an hour of waiting.
 
-> Missing your own targets next unit costs you nothing. Setting a target so
-> easy you can't miss it does.
+## 2. A bad API key shows up as an error record in the log
 
-**Two are written for you. You write three.**
+Target: with GEMINI_API_KEY=invalid and AI201_CACHE=0, running the same vintage-tee ask makes the process exit non-zero, and the new log line has status "error", error_type "ModelUnavailable", a non-empty error_message, and session_error null. 3 of 3 tries.
 
----
+Why this target: This is the failure I can force on purpose without depending on caption text. One try is not enough to trust the finally write; five feels like overkill once I have seen the exception type. Three is enough to catch a logger that swallows the failure or marks it ok.
 
-## 1. A matching query completes all three tools
+## 3. An empty query through run_agent lands as handled_error
 
-Given a query that matches at least one listing, the agent completes all three
-tool calls and returns a fit card — in at least 4 of 5 tries.
+Target: calling run_agent("", ...) directly (not python app.py ask '', which drops into interactive mode) makes the new log line have status "handled_error", a non-empty session_error, null error_type and error_message, and null stage_seconds for suggest_outfit and create_fit_card. 5 of 5 tries.
 
-**Why this target:**
-Search is a plain keyword match on individual words, and the query parser is built from regular expressions, so some phrasings will be parsed wrongly or will miss a listing that a person would consider a match. Two of the three steps also call a model, which can fail or return something unusable on a given run. Four of 5 leaves room for those misses without being so loose that a broken happy path would pass.
----
+Why this target: No model is involved; search returns [] and the branch stops. If it holds once it should hold every time, so 5 of 5. I score run_agent itself because the CLI empty-string path never reaches the agent.
 
-## 2. An impossible query stops before the second tool
+## 4. Two overlapping requests to serve.py run one after the other
 
-Given a query that matches no listings, the agent stops before calling
-`suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
+Target: with the server started by python serve.py, send two POST /ask requests with the vintage-tee query at the same moment. The second waits while the first finishes (the second run's start, which is its timestamp minus its total_seconds, is no earlier than the first run's timestamp, within 0.1 seconds), and both get a log line with status "ok". 3 of 3 pairs.
 
-**Why this target:**
-This path involves no model. It depends only on search returning an empty list and the loop checking for it, and both are deterministic code I control. If the branch works once it should work every time, so anything below 5 of 5 would mean the branch is broken, not that the path is unlucky.
+Why this target: One pair is not enough to trust the lock. Five pairs adds setup effort without more information, since the lock should behave the same way every time.
 
+## 5. Cache-off token use stays in a measurable band
 
----
+Target: over ten warm cache-off runs of the vintage-tee query, the mean of prompt_tokens + output_tokens in the log is between 500 and 1000.
 
-## 3. Something about state
-
-Given a query that matches at least one listing, the item dictionary logged by `trace.step` for `suggest_outfit` and for `create_fit_card` equals `session["selected_item"]`, in 5 of 5 tries.
-
-> **Revised in unit 4:** For the same matching query, the title, price and platform shown in the trace's suggest_outfit and create_fit_card input lines match the title, price and platform of session["selected_item"], 5 of 5 tries.
->
-> **Why revised:** The original asked for the full dictionary as logged by trace.step, but trace.step logs a string and logs the session's own object, so the original couldn't be measured. The revision is weaker than the original.
-
-
-**Why this target:**
-Comparing the full dictionary, not just the ID, catches an item that arrives with fields altered or dropped. The check covers the hand-off from the loop to each tool, and because the loop reads the item from the session for both calls and involves no model, it should hold every time, so 5 of 5 is fair.
-
-
----
-
-## 4. Something about the fit card
-
-Given a matching query, the fit card is 3 sentences or fewer (hashtags do not count as sentences), contains at least one word of four letters or more from the item's title, and does not begin with the fixed fallback marker "[FALLBACK]", in 5 of 5 tries.
-
-**Why this target:**
-The fit card should be short enough to post and clearly about the right item. Starting the fallback caption with a fixed marker a model would never write lets me tell a real model caption from the hardcoded fallback. I picked 5 of 5 because these are loose checks that a reasonable caption passes however the model words it, so a miss would point to a real problem in my prompt or fallback handling and not to ordinary variation.
-
-
-
----
-
-## 5. Your choice
-
-Given the query "vintage graphic tee under $30, size M", the agent sets `session["parsed"]` to a `max_price` of 30 and a size of "M", in 5 of 5 tries.
-
-**Why this target:**
-Parsing uses regular expressions, so extraction should be reliable on a plain multi-constraint query before the values reach `search_listings`.
-
-
----
-
-<!-- ─────────────────────────────────────────────────────────────────────────
-     UNIT 4 — read this before you change anything above.
-
-     If a criterion turns out to be BROKEN rather than merely unmet, you can
-     revise it, and that earns credit. But never delete or edit the original
-     line. Add the revision underneath it, like this:
-
-         ## 4. Something about the fit card
-
-         The fit card is different every time.
-
-         **Why this target:** ...
-
-         > **Revised in unit 4:** For 5 different items, the 5 fit cards share
-         > no opening sentence.
-         >
-         > **Why revised:** "different" wasn't checkable — two cards that
-         > differed by one word still counted. The new version is something I
-         > can actually score.
-
-     That's a revision because the criterion couldn't be MEASURED.
-
-     Lowering a target because you missed it is not a revision, and it costs
-     you the point:
-
-         ✗ "I said the empty search stops it 5 of 5 times, but I got 3 of 5,
-            so 3 of 5 is more realistic."
-
-     A number you missed stays where it is, gets diagnosed, and gets a fix
-     attempted. That's where the points are.
-     ───────────────────────────────────────────────────────────────────────── -->
+Why this target: I measured about 737 tokens per run (roughly 587 in, 150 out), which is about $0.00055 at the list prices in the README. The band fails if counting drops to near zero or if prompts blow up past 1000, without freezing the mean at exactly 737. Scoring the mean over ten matches how I computed cost; a single-run cap would live or die on one chatty reply. I set this band after I had already measured the mean, so it can only fail if token counting breaks.
